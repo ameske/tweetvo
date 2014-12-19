@@ -1,0 +1,47 @@
+package main
+
+import "bytes"
+
+var hexToByte = map[byte]byte{
+	0x0: 0x30,
+	0x1: 0x31,
+	0x2: 0x32,
+	0x3: 0x33,
+	0x4: 0x34,
+	0x5: 0x35,
+	0x6: 0x36,
+	0x7: 0x37,
+	0x8: 0x38,
+	0x9: 0x39,
+	0xA: 0x41,
+	0xB: 0x42,
+	0xC: 0x43,
+	0xD: 0x44,
+	0xE: 0x45,
+	0xF: 0x46,
+}
+
+// Twitter wants RFC 3986, Go says "f you" I'm gonna use +'s
+func percentEncode(s string) string {
+	var buf bytes.Buffer
+
+	for _, b := range []byte(s) {
+		if !validASCII(b) {
+			buf.WriteByte(0x25)
+			buf.WriteByte(hexToByte[b&0xF0>>4])
+			buf.WriteByte(hexToByte[b&0xF])
+		} else {
+			buf.WriteByte(b)
+		}
+	}
+
+	return buf.String()
+}
+
+// rfc3986 returns whether or not the byte is an acceptable ASCII value to rfc3986
+func validASCII(b byte) bool {
+	return (b >= 0x30 && b <= 0x39) ||
+		(b >= 0x41 && b <= 0x5A) ||
+		(b >= 0x61 && b <= 0x7A) ||
+		(b == 0x2D || b == 0x2E || b == 0x5F || b == 0x7E)
+}
