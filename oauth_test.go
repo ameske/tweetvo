@@ -14,11 +14,11 @@ var expectedSignature = "tnnArxj06cWHq44gCs1OSKk/jLY="
 var testRequest *http.Request
 
 var testConfig = OAuthConfig{
-	consumerKey:       "xvz1evFS4wEEPTGEFPHBog",
-	consumerSecret:    "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
-	accessToken:       "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb",
-	accessTokenSecret: "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
-	version:           "1.0",
+	ConsumerKey:       "xvz1evFS4wEEPTGEFPHBog",
+	ConsumerSecret:    "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
+	AccessToken:       "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb",
+	AccessTokenSecret: "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+	Version:           "1.0",
 }
 
 var testHeader = oauthHeader{
@@ -31,8 +31,7 @@ var testHeader = oauthHeader{
 }
 
 var testBody = url.Values{
-	"include_entities": []string{"true"},
-	"status":           []string{"Hello Ladies + Gentlemen, a signed OAuth request!"},
+	"status": []string{"Hello Ladies + Gentlemen, a signed OAuth request!"},
 }
 
 func init() {
@@ -46,7 +45,7 @@ func TestConfigHashKey(t *testing.T) {
 }
 
 func TestOAuthSigning(t *testing.T) {
-	req, err := http.NewRequest("POST", "https://api.twitter.com/1/statuses/update.json", bytes.NewBuffer([]byte(testBody.Encode())))
+	req, err := http.NewRequest("POST", "https://api.twitter.com/1/statuses/update.json?include_entities=true", bytes.NewBuffer([]byte(testBody.Encode())))
 	if err != nil {
 		t.Fatal(err.Error())
 	}

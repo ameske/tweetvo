@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -16,29 +17,29 @@ import (
 )
 
 type OAuthConfig struct {
-	consumerKey       string `yaml:"CONSUMER_KEY"`
-	consumerSecret    string `yaml:"CONSUMER_SECRET"`
-	accessToken       string `yaml:"ACCESS_TOKEN"`
-	accessTokenSecret string `yaml:"ACCESS_TOKEN_SECRET"`
-	version           string `yaml:"VERSION"`
+	ConsumerKey       string `yaml:"CONSUMER_KEY"`
+	ConsumerSecret    string `yaml:"CONSUMER_SECRET"`
+	AccessToken       string `yaml:"ACCESS_TOKEN"`
+	AccessTokenSecret string `yaml:"ACCESS_TOKEN_SECRET"`
+	Version           string `yaml:"VERSION"`
 }
 
 func (config OAuthConfig) header() *oauthHeader {
 	return &oauthHeader{
-		ConsumerKey:     config.consumerKey,
+		ConsumerKey:     config.ConsumerKey,
 		Nonce:           oauthNonce(),
 		SignatureMethod: "HMAC-SHA1",
 		Timestamp:       strconv.Itoa(int(time.Now().Unix())),
-		AccessToken:     config.accessToken,
+		AccessToken:     config.AccessToken,
 		Version:         "1.0",
 	}
 }
 
 func (config OAuthConfig) HashKey() string {
-	return config.consumerSecret + "&" + config.accessTokenSecret
+	return config.ConsumerSecret + "&" + config.AccessTokenSecret
 }
 
-var headerFormat = `OAuth %s="%s", %s="%s", %s="%s", %s="%s", %s="%s", %s="%s", %s=%s"`
+var headerFormat = `OAuth %s="%s", %s="%s", %s="%s", %s="%s", %s="%s", %s="%s", %s="%s"`
 
 type oauthHeader struct {
 	ConsumerKey     string
@@ -63,13 +64,20 @@ func (h *oauthHeader) Map() map[string]string {
 
 func (h *oauthHeader) String() string {
 	return fmt.Sprintf(headerFormat,
-		url.QueryEscape(h.ConsumerKey),
-		url.QueryEscape(h.Nonce),
-		url.QueryEscape(h.Signature),
-		url.QueryEscape(h.SignatureMethod),
-		url.QueryEscape(h.Timestamp),
-		url.QueryEscape(h.AccessToken),
-		url.QueryEscape(h.Version))
+		"oauth_consumer_key",
+		percentEncode(h.ConsumerKey),
+		"oauth_nonce",
+		percentEncode(h.Nonce),
+		"oauth_signature",
+		percentEncode(h.Signature),
+		"oauth_signature_method",
+		percentEncode(h.SignatureMethod),
+		"oauth_timestamp",
+		percentEncode(h.Timestamp),
+		"oauth_token",
+		percentEncode(h.AccessToken),
+		"oauth_version",
+		percentEncode(h.Version))
 }
 
 func (config OAuthConfig) Sign(req *http.Request, header *oauthHeader) error {
@@ -101,7 +109,7 @@ func oauthNonce() string {
 
 	var b bytes.Buffer
 	binary.Write(&b, binary.LittleEndian, &n)
-	return base64.URLEncoding.EncodeToString(b.Bytes())
+	return base64.StdEncoding.EncodeToString(b.Bytes())
 }
 
 func oauthSignatureString(req *http.Request, params []oauthParam) string {
@@ -112,7 +120,7 @@ func oauthSignatureString(req *http.Request, params []oauthParam) string {
 	signatureString.WriteByte('&')
 
 	// URL
-	signatureString.WriteString(percentEncode(req.URL.String()))
+	signatureString.WriteString(percentEncode(req.URL.Scheme + "://" + req.URL.Host + req.URL.Path))
 	signatureString.WriteByte('&')
 
 	// Parm String
@@ -130,10 +138,7 @@ func oauthSignatureString(req *http.Request, params []oauthParam) string {
 	return signatureString.String()
 }
 
-type oauthParam struct {
-	key   string
-	value string
-}
+type oauthParam struct{ key, value string }
 
 type paramList []oauthParam
 
@@ -144,22 +149,29 @@ func (p paramList) Len() int { return len(p) }
 func (p paramList) Less(i, j int) bool { return p[i].key < p[j].key }
 
 func sortedOauthParameters(req *http.Request, h *oauthHeader) ([]oauthParam, error) {
-	var bodyBytes bytes.Buffer
-	bodyBytes.ReadFrom(req.Body)
-
 	// Gather the needed components for the signing
 	header := h.Map()
 	query := req.URL.Query()
-	body, err := url.ParseQuery(bodyBytes.String())
-	if err != nil {
-		return nil, err
+
+	var body url.Values
+
+	if req.Body != nil {
+		var err error
+		bodyBytes, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		body, err = url.ParseQuery(string(bodyBytes))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	params := make([]oauthParam, 0, len(header)+len(query)+len(body))
-	for k, v := range query {
+	for k, v := range body {
 		params = append(params, oauthParam{key: percentEncode(k), value: percentEncode(v[0])})
 	}
-	for k, v := range body {
+	for k, v := range query {
 		params = append(params, oauthParam{key: percentEncode(k), value: percentEncode(v[0])})
 	}
 	for k, v := range header {
