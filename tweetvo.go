@@ -21,18 +21,24 @@ var (
 func init() {
 	c, err := ioutil.ReadFile("tweetvo.yaml")
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 
 	err = yaml.Unmarshal(c, &config)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err)
 	}
 }
 
 func main() {
-	delayedTweets := make(chan Tweet, 1024)
-	go delay(delayedTweets)
+	// Setup the webserver to handle websocket connections
+	web := make(chan Tweet, 1024)
+	http.HandleFunc("/tweets", establishWebsocket(web))
+	go http.ListenAndServe(":61489", nil)
+
+	// Write tweets to stdout for now to debug
+	stdout := make(chan Tweet, 1024)
+	go serveStdoutTweets(stdout)
 
 	req, err := http.NewRequest("GET", "https://userstream.twitter.com/1.1/user.json?with=true", nil)
 	if err != nil {
@@ -55,10 +61,10 @@ func main() {
 	for {
 		message, err := readMessage(respReader)
 		if err != nil {
-			log.Fatal(err.Error())
+			log.Fatalf("ReadMessage: %s", err.Error())
 		}
 
-		processMessage(message, delayedTweets)
+		processMessage(message, stdout, web)
 	}
 }
 
@@ -84,7 +90,7 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 // processMessage determines whether or not the message is a tweet or some other
 // informration. If the message is a tweet it is sent to the delay function, otherwise
 // it is printed out.
-func processMessage(message []byte, delay chan Tweet) {
+func processMessage(message []byte, web chan Tweet, cli chan Tweet) {
 	if len(message) == 0 {
 		return
 	}
@@ -97,29 +103,22 @@ func processMessage(message []byte, delay chan Tweet) {
 	var t Tweet
 	err := json.Unmarshal(message, &t)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal("Unmarshal: %s", err.Error())
 	}
 
-	delay <- t
+	cli <- t
+	web <- t
 }
 
 // delay applies a delay to incoming tweets
-func delay(tweets chan Tweet) {
-	for {
-		t := <-tweets
+func delay(t Tweet, dur time.Duration) {
+	tweetTime, err := time.Parse("Mon Jan 2 15:04:05 +0000 2006", t.CreatedAt)
+	if err != nil {
+		log.Fatal("DelayTimeParse: %s", err.Error())
+	}
 
-		tweetTime, err := time.Parse("Mon Jan 2 15:04:05 +0000 2006", t.CreatedAt)
-		if err != nil {
-			log.Fatalf(err.Error())
-		}
-		fmt.Printf("Live: %d\n", tweetTime.Unix())
-
-		adjTweetTime := tweetTime.Add(-time.Second * 30)
-		if adjTweetTime.Before(time.Now()) {
-			<-time.After(time.Now().Sub(adjTweetTime))
-		}
-
-		fmt.Printf("Delayed: %d\n", time.Now().Unix())
-		fmt.Printf("%s\t%s: %s\n", t.CreatedAt, t.User.ScreenName, t.Text)
+	adjTweetTime := tweetTime.Add(-dur)
+	if adjTweetTime.Before(time.Now()) {
+		<-time.After(time.Now().Sub(adjTweetTime))
 	}
 }
